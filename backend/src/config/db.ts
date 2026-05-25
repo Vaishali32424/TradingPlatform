@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
 
 export async function connectDB(maxAttempts = 30): Promise<void> {
-  const uri = process.env.MONGODB_URI;
+  const uri = process.env.MONGO_URL;
   if (!uri) {
-    throw new Error("MONGODB_URI is not set in .env");
+    throw new Error("MONGO_URL is not set in .env");
   }
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
