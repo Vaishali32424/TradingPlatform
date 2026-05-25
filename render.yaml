@@ -7,6 +7,7 @@ services:
     rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: npm start
+    # Do NOT use "npm run dev" — Render needs production start on process.env.PORT
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

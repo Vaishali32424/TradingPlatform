@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import mongoose from "mongoose";
 import { connectDB } from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import superAdminRoutes from "./routes/superadmin.js";
@@ -10,7 +11,6 @@ import userRoutes from "./routes/user.js";
 import marketRoutes from "./routes/market.js";
 
 const app = express();
-const PORT = process.env.PORT ?? 5000;
 
 const allowedOrigins = (process.env.CLIENT_URL ?? "http://localhost:5173")
   .split(",")
@@ -33,7 +33,11 @@ app.use(express.json());
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
+  const dbReady = mongoose.connection.readyState === 1;
+  res.json({
+    status: "ok",
+    db: dbReady ? "connected" : "connecting",
+  });
 });
 
 app.use("/api/auth", authRoutes);
@@ -42,14 +46,12 @@ app.use("/api/broker", brokerRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/market", marketRoutes);
 
-async function start() {
-  await connectDB();
-  app.listen(PORT, () => {
-    console.log(`API running on http://localhost:${PORT}`);
-  });
-}
+const port = Number(process.env.PORT ?? 5000);
 
-start().catch((err) => {
-  console.error("Failed to start server:", err);
-  process.exit(1);
+app.listen(port, "0.0.0.0", () => {
+  console.log(`API listening on 0.0.0.0:${port}`);
+});
+
+connectDB().catch((err) => {
+  console.error("MongoDB connection failed:", err);
 });
