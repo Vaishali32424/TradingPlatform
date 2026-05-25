@@ -3,6 +3,9 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --font-display: "Outfit", "Inter", system-ui, sans-serif;
+  }
   html {
     @apply antialiased;
   }

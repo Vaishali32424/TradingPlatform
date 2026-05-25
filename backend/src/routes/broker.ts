@@ -12,6 +12,8 @@ import { Transaction } from "../models/Transaction.js";
 import { WithdrawalRequest } from "../models/WithdrawalRequest.js";
 import { generateUserId } from "../utils/ids.js";
 import { logActivity } from "../utils/activity.js";
+import { normalizeTrade } from "../utils/tradeCalc.js";
+import { buildStatementLedger } from "../utils/statement.js";
 
 const router = Router();
 router.use(requireAuth, requireRole("broker"));
@@ -241,6 +243,36 @@ router.put("/users/:id", async (req: AuthRequest, res) => {
   res.json({ user: { ...user.toObject(), passwordHash: undefined } });
 });
 
+const setBalanceSchema = z.object({
+  totalDeposited: z.number().min(0),
+});
+
+router.put("/users/:id/balance", async (req: AuthRequest, res) => {
+  const parsed = setBalanceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: "Enter a valid balance (USD)" });
+    return;
+  }
+
+  const user = await PlatformUser.findOne({
+    _id: req.params.id,
+    brokerId: req.user!.brokerId,
+    isActive: true,
+  });
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+
+  user.totalDeposited = parsed.data.totalDeposited;
+  await user.save();
+
+  res.json({
+    message: `Balance set to $${parsed.data.totalDeposited.toLocaleString()}`,
+    user: { ...user.toObject(), passwordHash: undefined },
+  });
+});
+
 router.delete("/users/:id", async (req: AuthRequest, res) => {
   const user = await PlatformUser.findOneAndUpdate(
     { _id: req.params.id, brokerId: req.user!.brokerId },
@@ -298,7 +330,7 @@ router.post("/users/:id/add-money", async (req: AuthRequest, res) => {
     "broker",
     broker.brokerId,
     "money_added",
-    `₹${parsed.data.amount} to ${user.name}`,
+    `$${parsed.data.amount} to ${user.name}`,
     broker.brokerId,
     {
       brokerId: broker.brokerId,
@@ -311,7 +343,7 @@ router.post("/users/:id/add-money", async (req: AuthRequest, res) => {
   );
 
   res.status(201).json({
-    message: `₹${parsed.data.amount.toLocaleString()} added to ${user.name}`,
+    message: `$${parsed.data.amount.toLocaleString()} added to ${user.name}`,
     transaction: tx,
     user: { ...user.toObject(), passwordHash: undefined },
   });
@@ -366,7 +398,7 @@ router.put("/withdrawals/:id", async (req: AuthRequest, res) => {
     }
     if (request.amount > user.totalDeposited) {
       res.status(400).json({
-        message: `User balance (₹${user.totalDeposited}) is less than requested amount`,
+        message: `User balance ($${user.totalDeposited}) is less than requested amount`,
       });
       return;
     }
@@ -404,8 +436,51 @@ router.get("/users/:userId/trades", async (req: AuthRequest, res) => {
   const trades = await Trade.find({
     brokerId: req.user!.brokerId,
     userRef: req.params.userId,
+    $or: [{ inOrderHistory: false }, { inOrderHistory: { $exists: false } }],
   }).sort({ createdAt: -1 });
-  res.json(trades);
+  res.json(trades.map((t) => normalizeTrade(t.toObject() as unknown as Record<string, unknown>)));
+});
+
+router.get("/users/:userId/order-history", async (req: AuthRequest, res) => {
+  const trades = await Trade.find({
+    brokerId: req.user!.brokerId,
+    userRef: req.params.userId,
+    inOrderHistory: true,
+  }).sort({ movedToHistoryAt: -1, createdAt: -1 });
+  res.json(trades.map((t) => normalizeTrade(t.toObject() as unknown as Record<string, unknown>)));
+});
+
+router.get("/users/:userId/order-history/statement", async (req: AuthRequest, res) => {
+  const user = await PlatformUser.findOne({
+    _id: req.params.userId,
+    brokerId: req.user!.brokerId,
+  }).lean();
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+  const trades = await Trade.find({
+    userId: user.userId,
+    brokerId: req.user!.brokerId,
+    inOrderHistory: true,
+  })
+    .sort({ movedToHistoryAt: 1 })
+    .lean();
+  const normalized = trades.map((t) =>
+    normalizeTrade(t as unknown as Record<string, unknown>)
+  );
+  const ledger = buildStatementLedger({
+    deposits: [],
+    withdrawals: [],
+    trades: normalized as Parameters<typeof buildStatementLedger>[0]["trades"],
+    openingBalance: 0,
+  });
+  res.json({
+    user: { name: user.name, userId: user.userId },
+    trades: normalized,
+    ledger,
+    generatedAt: new Date().toISOString(),
+  });
 });
 
 const tradeSchema = z.object({
@@ -421,6 +496,7 @@ const tradeSchema = z.object({
   optionType: z.enum(["call", "put"]).optional(),
   status: z.enum(["active", "closed", "pending"]).optional(),
   notes: z.string().optional(),
+  scheduledMoveAt: z.string().optional(),
 });
 
 router.post("/trades", async (req: AuthRequest, res) => {
@@ -448,6 +524,18 @@ router.post("/trades", async (req: AuthRequest, res) => {
   }
 
   const tradeLabel = `${data.companyName} · ${data.side} ${data.lots}`;
+  let scheduledMoveAt: Date | undefined;
+  if (data.scheduledMoveAt) {
+    scheduledMoveAt = new Date(data.scheduledMoveAt);
+    if (Number.isNaN(scheduledMoveAt.getTime())) {
+      res.status(400).json({ message: "Invalid scheduled date/time" });
+      return;
+    }
+    if (scheduledMoveAt.getTime() <= Date.now()) {
+      res.status(400).json({ message: "Scheduled time must be in the future" });
+      return;
+    }
+  }
   const trade = await Trade.create({
     brokerRef: broker._id,
     brokerId: broker.brokerId,
@@ -466,6 +554,7 @@ router.post("/trades", async (req: AuthRequest, res) => {
     tradeName: tradeLabel,
     status: data.status ?? "active",
     notes: data.notes,
+    scheduledMoveAt,
   });
 
   await logActivity(
@@ -523,6 +612,72 @@ router.delete("/trades/:id", async (req: AuthRequest, res) => {
     return;
   }
   res.json({ message: "Trade deleted" });
+});
+
+router.post("/trades/:id/to-order-history", async (req: AuthRequest, res) => {
+  const trade = await Trade.findOne({
+    _id: req.params.id,
+    brokerId: req.user!.brokerId,
+  });
+  if (!trade) {
+    res.status(404).json({ message: "Trade not found" });
+    return;
+  }
+  if (trade.inOrderHistory) {
+    res.status(400).json({ message: "Trade is already in order history" });
+    return;
+  }
+  trade.inOrderHistory = true;
+  trade.movedToHistoryAt = new Date();
+  trade.scheduledMoveAt = undefined;
+  await trade.save();
+  res.json(normalizeTrade(trade.toObject() as unknown as Record<string, unknown>));
+});
+
+const scheduleSchema = z.object({
+  scheduledMoveAt: z.string().min(1),
+});
+
+router.post("/trades/:id/schedule", async (req: AuthRequest, res) => {
+  const parsed = scheduleSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: "Scheduled date/time is required" });
+    return;
+  }
+  const scheduledMoveAt = new Date(parsed.data.scheduledMoveAt);
+  if (Number.isNaN(scheduledMoveAt.getTime())) {
+    res.status(400).json({ message: "Invalid scheduled date/time" });
+    return;
+  }
+  if (scheduledMoveAt.getTime() <= Date.now()) {
+    res.status(400).json({ message: "Scheduled time must be in the future" });
+    return;
+  }
+  const trade = await Trade.findOne({
+    _id: req.params.id,
+    brokerId: req.user!.brokerId,
+    inOrderHistory: { $ne: true },
+  });
+  if (!trade) {
+    res.status(404).json({ message: "Trade not found" });
+    return;
+  }
+  trade.scheduledMoveAt = scheduledMoveAt;
+  await trade.save();
+  res.json(normalizeTrade(trade.toObject() as unknown as Record<string, unknown>));
+});
+
+router.delete("/trades/:id/schedule", async (req: AuthRequest, res) => {
+  const trade = await Trade.findOneAndUpdate(
+    { _id: req.params.id, brokerId: req.user!.brokerId },
+    { $unset: { scheduledMoveAt: "" } },
+    { new: true }
+  );
+  if (!trade) {
+    res.status(404).json({ message: "Trade not found" });
+    return;
+  }
+  res.json(normalizeTrade(trade.toObject() as unknown as Record<string, unknown>));
 });
 
 export default router;

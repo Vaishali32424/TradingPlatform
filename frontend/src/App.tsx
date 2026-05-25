@@ -16,6 +16,7 @@ import BrokerWithdrawals from "./pages/broker/Withdrawals";
 import BrokerProfile from "./pages/broker/Profile";
 import UserHome from "./pages/user/Home";
 import UserPortfolio from "./pages/user/Portfolio";
+import UserOrderHistory from "./pages/user/OrderHistory";
 import UserProfile from "./pages/user/Profile";
 import { UserAppShell } from "./components/user/UserAppShell";
 
@@ -67,7 +68,7 @@ export default function App() {
 
       <Route element={<ProtectedRoute roles={["superadmin"]} />}>
         <Route
-          element={<AppShell title="Super Admin" navItems={superAdminNav} />}
+          element={<AppShell navItems={superAdminNav} />}
         >
           <Route path="/superadmin" element={<SuperAdminDashboard />} />
           <Route path="/superadmin/brokers" element={<BrokerManagement />} />
@@ -78,7 +79,7 @@ export default function App() {
       </Route>
 
       <Route element={<ProtectedRoute roles={["broker"]} />}>
-        <Route element={<AppShell title="Broker" navItems={brokerNav} />}>
+        <Route element={<AppShell navItems={brokerNav} />}>
           <Route path="/broker" element={<BrokerDashboard />} />
           <Route path="/broker/users" element={<BrokerUserManagement />} />
           <Route path="/broker/withdrawals" element={<BrokerWithdrawals />} />
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="/user" element={<Navigate to="/user/home" replace />} />
           <Route path="/user/home" element={<UserHome />} />
           <Route path="/user/portfolio" element={<UserPortfolio />} />
+          <Route path="/user/order-history" element={<UserOrderHistory />} />
           <Route path="/user/wallet" element={<Navigate to="/user/profile" replace />} />
           <Route path="/user/add-money" element={<Navigate to="/user/home" replace />} />
           <Route path="/user/profile" element={<UserProfile />} />

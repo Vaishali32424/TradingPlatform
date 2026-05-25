@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, IndianRupee, Users, Wallet } from "lucide-react";
+import { Copy, DollarSign, Users, Wallet } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { formatPersonLabel } from "../../utils/displayName";
@@ -29,10 +29,10 @@ export default function BrokerDashboard() {
       )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card flex gap-4">
-          <IndianRupee className="w-8 h-8 text-brand-500" />
+          <DollarSign className="w-8 h-8 text-brand-500" />
           <div>
             <p className="text-slate-400 text-sm">Money received</p>
-            <p className="text-2xl font-bold">₹{data.totalReceived.toLocaleString()}</p>
+            <p className="text-2xl font-bold">${data.totalReceived.toLocaleString()}</p>
           </div>
         </div>
         <div className="card flex gap-4">

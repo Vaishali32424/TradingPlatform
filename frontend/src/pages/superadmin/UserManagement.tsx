@@ -25,7 +25,7 @@ export default function SuperAdminUserManagement() {
         {users.map((u) => (
           <div key={u._id} className="card flex justify-between items-center gap-3">
             <PersonRow name={u.name} id={u.userId} photoUrl={u.profilePhoto} />
-            <p className="text-sm shrink-0">₹{u.totalDeposited.toLocaleString()}</p>
+            <p className="text-sm shrink-0">${u.totalDeposited.toLocaleString()}</p>
           </div>
         ))}
         {users.length === 0 && <p className="text-slate-400">No users found.</p>}

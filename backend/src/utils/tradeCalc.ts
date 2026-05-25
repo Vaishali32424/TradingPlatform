@@ -9,19 +9,13 @@ export function tradeProfitLoss(trade: {
 }): number {
   const buy = trade.buyAmount ?? trade.amount ?? 0;
   const sell = trade.sellAmount ?? trade.amount ?? 0;
-  const lots = trade.lots ?? 1;
-  const diff = trade.side === "sell" ? buy - sell : sell - buy;
-  return Number((diff * lots).toFixed(2));
+  return Number((sell - buy).toFixed(2));
 }
 
-export function normalizeTrade<T extends Record<string, unknown>>(trade: T): T & {
-  buyAmount: number;
-  sellAmount: number;
-  profitLoss: number;
-} {
+export function normalizeTrade(trade: Record<string, unknown>) {
   const buyAmount = (trade.buyAmount as number) ?? (trade.amount as number) ?? 0;
   const sellAmount = (trade.sellAmount as number) ?? (trade.amount as number) ?? 0;
-  return {
+  const out: Record<string, unknown> = {
     ...trade,
     buyAmount,
     sellAmount,
@@ -32,4 +26,14 @@ export function normalizeTrade<T extends Record<string, unknown>>(trade: T): T &
       lots: trade.lots as number,
     }),
   };
+  if (trade.scheduledMoveAt) {
+    out.scheduledMoveAt = new Date(trade.scheduledMoveAt as string | Date).toISOString();
+  }
+  if (trade.movedToHistoryAt) {
+    out.movedToHistoryAt = new Date(trade.movedToHistoryAt as string | Date).toISOString();
+  }
+  if (trade.inOrderHistory !== undefined) {
+    out.inOrderHistory = Boolean(trade.inOrderHistory);
+  }
+  return out;
 }

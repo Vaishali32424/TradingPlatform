@@ -3,14 +3,9 @@ import { LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { formatPersonLabel } from "../utils/displayName";
 import { BottomNav, type NavItem } from "./BottomNav";
+import { ForexWordmark } from "./ForexWordmark";
 
-export function AppShell({
-  title,
-  navItems,
-}: {
-  title: string;
-  navItems: NavItem[];
-}) {
+export function AppShell({ navItems }: { navItems: NavItem[] }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -22,16 +17,13 @@ export function AppShell({
   return (
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-40 bg-surface/90 backdrop-blur border-b border-slate-700/50">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div>
-            <p className="text-xs text-slate-400 uppercase tracking-wider">TradeVault</p>
-            <h1 className="font-semibold text-sm md:text-base">{title}</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline text-sm text-slate-400">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+          <ForexWordmark variant="dark" size="sm" />
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="hidden sm:inline text-sm text-slate-400 truncate max-w-[180px]">
               {user ? formatPersonLabel(user.name, user.loginId) : ""}
             </span>
-            <button type="button" onClick={handleLogout} className="btn-ghost" aria-label="Logout">
+            <button type="button" onClick={handleLogout} className="btn-ghost shrink-0" aria-label="Logout">
               <LogOut className="w-5 h-5" />
             </button>
           </div>

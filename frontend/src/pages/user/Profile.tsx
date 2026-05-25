@@ -46,10 +46,19 @@ export default function UserProfile() {
 
   const sendWithdrawal = async (e: React.FormEvent) => {
     e.preventDefault();
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toastError("Enter a valid amount");
+      return;
+    }
+    if (amt > balance) {
+      toastError(`Amount cannot exceed available balance ($${balance.toLocaleString()})`);
+      return;
+    }
     setSubmitting(true);
     try {
       const { data } = await api.post("/user/withdrawals", {
-        amount: Number(amount),
+        amount: amt,
         userNote: userNote.trim() || undefined,
       });
       toastSuccess(data.message ?? "Withdrawal request sent");
@@ -217,7 +226,7 @@ export default function UserProfile() {
               </button>
             </div>
             <p className="text-sm text-slate-600 leading-relaxed">
-              TradeVault connects you with your licensed broker for trading, funding, and support.
+              FOREX PLUS connects you with your licensed broker for trading, funding, and support.
             </p>
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
               <p className="text-xs text-slate-500 mb-1">Broker contact</p>

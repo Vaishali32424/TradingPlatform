@@ -1,5 +1,17 @@
 import type { Trade, TradeCurrency } from "../types";
 
+export function formatBuySellLine(trade: {
+  buyAmount?: number;
+  sellAmount?: number;
+  amount?: number;
+}): string {
+  const buy = trade.buyAmount ?? trade.amount ?? 0;
+  const sell = trade.sellAmount ?? trade.amount ?? 0;
+  const f = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `Buy $${f(buy)} · Sell $${f(sell)}`;
+}
+
 export function formatTradeAmount(amount: number, currency: TradeCurrency = "USD"): string {
   if (currency === "USD") {
     return `$${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -11,9 +23,13 @@ export function computeTradePL(trade: Trade & { profitLoss?: number }): number {
   if (trade.profitLoss != null) return trade.profitLoss;
   const buy = trade.buyAmount ?? trade.amount ?? 0;
   const sell = trade.sellAmount ?? trade.amount ?? 0;
-  const lots = trade.lots ?? 1;
-  const diff = trade.side === "sell" ? buy - sell : sell - buy;
-  return Number((diff * lots).toFixed(2));
+  return Number((sell - buy).toFixed(2));
+}
+
+/** Live P/L from buying & selling price fields (USD). */
+export function computePLFromPrices(buy: number, sell: number): number {
+  if (!Number.isFinite(buy) || !Number.isFinite(sell)) return 0;
+  return Number((sell - buy).toFixed(2));
 }
 
 export function formatTradeSummary(trade: Trade): string {

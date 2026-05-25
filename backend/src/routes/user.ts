@@ -12,6 +12,7 @@ import { Transaction } from "../models/Transaction.js";
 import { WithdrawalRequest } from "../models/WithdrawalRequest.js";
 import { generateUserId } from "../utils/ids.js";
 import { normalizeTrade, tradeProfitLoss } from "../utils/tradeCalc.js";
+import { buildStatementLedger } from "../utils/statement.js";
 
 function maskId(value?: string): string | undefined {
   if (!value || value.length < 4) return value;
@@ -181,19 +182,24 @@ router.put("/profile", async (req: AuthRequest, res) => {
   res.json({ user: obj });
 });
 
+async function allUserTrades(userId: string) {
+  const raw = await Trade.find({ userId }).lean();
+  return raw.map((t) => normalizeTrade(t as unknown as Record<string, unknown>));
+}
+
 router.get("/portfolio", async (req: AuthRequest, res) => {
   const user = await PlatformUser.findOne({ userId: req.user!.loginId }).lean();
   if (!user) {
     res.status(404).json({ message: "User not found" });
     return;
   }
-  const rawTrades = await Trade.find({ userId: req.user!.loginId }).sort({ createdAt: -1 }).lean();
-  const trades = rawTrades.map((t) => normalizeTrade(t));
-  const totalPL = trades.reduce((sum, t) => sum + t.profitLoss, 0);
+  const allTrades = await allUserTrades(req.user!.loginId);
+  const trades = allTrades.filter((t) => !t.inOrderHistory);
+  const totalPL = allTrades.reduce((sum, t) => sum + Number(t.profitLoss ?? 0), 0);
   const balance = user.totalDeposited;
   const margin = trades
     .filter((t) => t.status === "active")
-    .reduce((sum, t) => sum + (t.buyAmount ?? 0) * (t.lots ?? 1) * 0.1, 0);
+    .reduce((sum, t) => sum + Number(t.buyAmount ?? 0) * Number(t.lots ?? 1) * 0.1, 0);
   const equity = balance + totalPL;
   const freeMargin = Math.max(0, equity - margin);
   const marginLevel = margin > 0 ? (equity / margin) * 100 : 0;
@@ -209,6 +215,92 @@ router.get("/portfolio", async (req: AuthRequest, res) => {
       totalPL: Number(totalPL.toFixed(2)),
       currency: "USD",
     },
+  });
+});
+
+router.get("/portfolio/statement", async (req: AuthRequest, res) => {
+  const user = await PlatformUser.findOne({ userId: req.user!.loginId }).lean();
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+  const [credits, withdrawals, allTrades] = await Promise.all([
+    Transaction.find({
+      userId: user.userId,
+      type: "broker_credit",
+      status: "completed",
+    })
+      .sort({ createdAt: 1 })
+      .lean(),
+    WithdrawalRequest.find({ userId: user.userId }).sort({ createdAt: 1 }).lean(),
+    allUserTrades(user.userId),
+  ]);
+  const portfolioTrades = allTrades.filter((t) => !t.inOrderHistory);
+  const totalPL = allTrades.reduce((sum, t) => sum + Number(t.profitLoss ?? 0), 0);
+  const ledger = buildStatementLedger({
+    deposits: credits.map((c) => ({
+      amount: c.amount,
+      createdAt: (c as { createdAt?: Date }).createdAt ?? new Date(),
+      note: c.note,
+      addedBy: c.addedByBrokerName,
+    })),
+    withdrawals: withdrawals.map((w) => ({
+      amount: w.amount,
+      createdAt: w.reviewedAt ?? (w as { createdAt?: Date }).createdAt ?? new Date(),
+      status: w.status,
+    })),
+    trades: portfolioTrades as Parameters<typeof buildStatementLedger>[0]["trades"],
+    openingBalance: 0,
+  });
+  res.json({
+    user: { name: user.name, userId: user.userId },
+    trades: portfolioTrades,
+    summary: {
+      balance: user.totalDeposited,
+      equity: Number((user.totalDeposited + totalPL).toFixed(2)),
+      totalPL: Number(totalPL.toFixed(2)),
+      currency: "USD",
+    },
+    ledger,
+    credits,
+    generatedAt: new Date().toISOString(),
+  });
+});
+
+router.get("/order-history", async (req: AuthRequest, res) => {
+  const user = await PlatformUser.findOne({ userId: req.user!.loginId }).lean();
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+  const raw = await Trade.find({ userId: user.userId, inOrderHistory: true })
+    .sort({ movedToHistoryAt: -1, createdAt: -1 })
+    .lean();
+  const trades = raw.map((t) => normalizeTrade(t as unknown as Record<string, unknown>));
+  res.json({ trades });
+});
+
+router.get("/order-history/statement", async (req: AuthRequest, res) => {
+  const user = await PlatformUser.findOne({ userId: req.user!.loginId }).lean();
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+  const raw = await Trade.find({ userId: user.userId, inOrderHistory: true })
+    .sort({ movedToHistoryAt: 1 })
+    .lean();
+  const trades = raw.map((t) => normalizeTrade(t as unknown as Record<string, unknown>));
+  const ledger = buildStatementLedger({
+    deposits: [],
+    withdrawals: [],
+    trades: trades as Parameters<typeof buildStatementLedger>[0]["trades"],
+    openingBalance: 0,
+  });
+  res.json({
+    user: { name: user.name, userId: user.userId },
+    trades,
+    ledger,
+    generatedAt: new Date().toISOString(),
   });
 });
 

@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import { PasswordInput } from "../components/PasswordInput";
 import { formatPersonLabel } from "../utils/displayName";
+import { ForexWordmark } from "../components/ForexWordmark";
 import { toastSuccess } from "../utils/toast";
 
 export default function SignupPage() {
@@ -59,7 +60,10 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-8">
       <form onSubmit={handleSubmit} className="card w-full max-w-md space-y-4">
-        <h1 className="text-xl font-bold">Create account</h1>
+        <div className="flex justify-center pb-2">
+          <ForexWordmark variant="dark" size="md" />
+        </div>
+        <h1 className="text-xl font-bold text-center">Create account</h1>
         {brokerId ? (
           <p className="text-sm text-slate-400">
             Registering under broker:{" "}

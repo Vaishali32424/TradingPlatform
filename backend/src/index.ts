@@ -56,9 +56,16 @@ async function loadApp(): Promise<void> {
 
   console.log("Routes registered");
 
-  connectDB().catch((err) => {
-    console.error("MongoDB connection failed:", err);
-  });
+  connectDB()
+    .then(() => {
+      import("./services/tradeScheduler.js").then(({ startTradeScheduler }) => {
+        startTradeScheduler();
+        console.log("Trade scheduler started");
+      });
+    })
+    .catch((err) => {
+      console.error("MongoDB connection failed:", err);
+    });
 }
 
 loadApp().catch((err) => {

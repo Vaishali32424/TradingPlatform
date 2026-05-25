@@ -99,7 +99,7 @@ export default function BrokerWithdrawals() {
                     size="sm"
                   />
                   <p className="text-lg font-semibold text-brand-500 mt-2">
-                    ₹{w.amount.toLocaleString()}
+                    ${w.amount.toLocaleString()}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
                     {new Date(w.createdAt).toLocaleString()}

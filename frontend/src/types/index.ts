@@ -72,7 +72,19 @@ export interface Trade {
   brokerProfilePhoto?: string;
   notes?: string;
   createdAt: string;
+  inOrderHistory?: boolean;
+  scheduledMoveAt?: string;
+  movedToHistoryAt?: string;
 }
+
+export type StatementLedgerRow = {
+  date: string;
+  description: string;
+  credit: number;
+  debit: number;
+  balance: number;
+  type?: string;
+};
 
 export interface ActivityTradeMeta {
   companyName: string;

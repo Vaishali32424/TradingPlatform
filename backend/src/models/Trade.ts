@@ -22,6 +22,9 @@ export interface ITrade extends Document {
   tradeName?: string;
   status: "active" | "closed" | "pending";
   notes?: string;
+  inOrderHistory?: boolean;
+  scheduledMoveAt?: Date;
+  movedToHistoryAt?: Date;
 }
 
 const tradeSchema = new Schema<ITrade>(
@@ -47,6 +50,9 @@ const tradeSchema = new Schema<ITrade>(
       default: "active",
     },
     notes: String,
+    inOrderHistory: { type: Boolean, default: false, index: true },
+    scheduledMoveAt: { type: Date, index: true },
+    movedToHistoryAt: Date,
   },
   { timestamps: true }
 );

@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { LogOut } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { UserBottomNav, type UserNavItem } from "./UserBottomNav";
+import { ForexWordmark } from "../ForexWordmark";
 
 export function UserAppShell({ navItems }: { navItems: UserNavItem[] }) {
   const { user, logout } = useAuth();
@@ -11,7 +12,7 @@ export function UserAppShell({ navItems }: { navItems: UserNavItem[] }) {
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 md:hidden">
         <div className="px-4 h-12 flex items-center justify-between">
-          <p className="font-bold text-slate-800">TradeVault</p>
+          <ForexWordmark variant="light" size="sm" />
           <button
             type="button"
             onClick={() => {
@@ -28,7 +29,10 @@ export function UserAppShell({ navItems }: { navItems: UserNavItem[] }) {
 
       <header className="hidden md:block sticky top-0 z-40 bg-white border-b border-slate-200">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
-          <p className="font-bold">TradeVault · {user?.name}</p>
+          <p className="font-bold flex items-center gap-2 min-w-0">
+            <ForexWordmark variant="light" size="md" />
+            <span className="text-slate-500 font-normal text-sm truncate">· {user?.name}</span>
+          </p>
           <nav className="flex gap-1">
             {navItems.map(({ to, label, externalUrl }) =>
               externalUrl ? (
@@ -56,7 +60,14 @@ export function UserAppShell({ navItems }: { navItems: UserNavItem[] }) {
               )
             )}
           </nav>
-          <button type="button" onClick={() => { logout(); navigate("/login"); }} className="text-sm text-slate-500">
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              navigate("/login");
+            }}
+            className="text-sm text-slate-500"
+          >
             Logout
           </button>
         </div>

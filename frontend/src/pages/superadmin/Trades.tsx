@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../api/client";
-import { PersonRow } from "../../components/PersonRow";
-import { TradeCard } from "../../components/TradeCard";
 import type { Trade } from "../../types";
-import { formatTradeAmount } from "../../utils/trade";
+import { formatTradeAmount, formatBuySellLine, computeTradePL } from "../../utils/trade";
 
 export default function SuperAdminTrades() {
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -18,39 +16,48 @@ export default function SuperAdminTrades() {
 
   return (
     <div className="page-container space-y-4">
-      <h2 className="text-xl font-bold">All trades</h2>
+      <h2 className="text-lg font-bold">All trades</h2>
       {loading ? (
-        <p className="text-slate-400 animate-pulse">Loading...</p>
+        <p className="text-slate-400 animate-pulse text-sm">Loading...</p>
       ) : trades.length === 0 ? (
-        <p className="text-slate-400">No trades yet.</p>
+        <p className="text-slate-400 text-sm">No trades yet.</p>
       ) : (
-        <div className="space-y-3">
-          {trades.map((t) => (
-            <div key={t._id} className="card space-y-3">
-              <div className="flex flex-wrap gap-4">
-                {t.userName && (
-                  <PersonRow name={t.userName} id={t.userId} photoUrl={t.userProfilePhoto} size="sm" />
-                )}
-                {t.brokerName && t.brokerId && (
-                  <PersonRow
-                    name={t.brokerName}
-                    id={t.brokerId}
-                    photoUrl={t.brokerProfilePhoto}
-                    size="sm"
-                    subtitle="Broker"
-                  />
-                )}
-              </div>
-              <div className="flex justify-between items-start gap-3">
-                <TradeCard trade={t} />
-                <p className="text-lg font-bold text-brand-500 shrink-0">
-                  {formatTradeAmount(t.amount, t.currency ?? "INR")}
-                </p>
-              </div>
-              <p className="text-xs text-slate-500">{new Date(t.createdAt).toLocaleString()}</p>
-            </div>
-          ))}
-        </div>
+        <ul className="card divide-y divide-slate-700/40 p-0 overflow-hidden">
+          {trades.map((t) => {
+            const pl = computeTradePL(t);
+            const when = new Date(t.createdAt).toLocaleString(undefined, {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            return (
+              <li
+                key={t._id}
+                className="px-4 py-2.5 text-xs hover:bg-slate-800/30 flex flex-wrap items-baseline gap-x-2 gap-y-0.5"
+              >
+                <span className="text-slate-500 shrink-0">{when}</span>
+                <span className="text-brand-400">{t.brokerName ?? "—"}</span>
+                <span className="text-slate-600">→</span>
+                <span className="text-slate-300">{t.userName ?? t.userId}</span>
+                <span className="text-slate-600">·</span>
+                <span className="font-medium text-slate-200">
+                  {t.companyName ?? t.tradeName}
+                  {t.side ? ` ${t.side}` : ""}
+                  {t.lots != null ? ` ${t.lots}` : ""}
+                </span>
+                <span className="text-slate-500 tabular-nums">{formatBuySellLine(t)}</span>
+                <span
+                  className={`ml-auto font-semibold tabular-nums ${
+                    pl >= 0 ? "text-emerald-400" : "text-red-400"
+                  }`}
+                >
+                  {formatTradeAmount(pl, "USD")}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

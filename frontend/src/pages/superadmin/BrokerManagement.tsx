@@ -70,7 +70,7 @@ export default function BrokerManagement() {
                     <p className="font-semibold">{b.name}</p>
                     <p className="text-sm text-brand-500">{b.brokerId}</p>
                     <p className="text-xs text-slate-400 mt-1">
-                      {b.userCount ?? 0} user{(b.userCount ?? 0) !== 1 ? "s" : ""} · ₹
+                      {b.userCount ?? 0} user{(b.userCount ?? 0) !== 1 ? "s" : ""} · $
                       {b.totalReceived.toLocaleString()} received
                       {!b.isActive && (
                         <span className="ml-2 text-red-400">(inactive)</span>
@@ -121,7 +121,7 @@ export default function BrokerManagement() {
                             size="sm"
                           />
                           <span className="text-slate-400 shrink-0">
-                            Balance: ₹{u.totalDeposited.toLocaleString()}
+                            Balance: ${u.totalDeposited.toLocaleString()}
                             {!u.isActive && (
                               <span className="text-red-400 ml-2">inactive</span>
                             )}
