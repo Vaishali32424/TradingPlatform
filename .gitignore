@@ -1,13 +1,14 @@
 node_modules/
 dist/
-backend/uploads/*
-!backend/uploads/.gitkeep
+build/
+coverage/
 .env
 .env.local
 .env.*.local
 !.env.example
 !backend/.env.example
 !frontend/.env.example
+backend/uploads/*
+!backend/uploads/.gitkeep
 *.log
 .DS_Store
-.docker/

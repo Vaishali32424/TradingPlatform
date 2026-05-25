@@ -12,9 +12,20 @@ import marketRoutes from "./routes/market.js";
 const app = express();
 const PORT = process.env.PORT ?? 5000;
 
+const allowedOrigins = (process.env.CLIENT_URL ?? "http://localhost:5173")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL ?? "http://localhost:5000",
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked: ${origin}`));
+      }
+    },
     credentials: true,
   })
 );

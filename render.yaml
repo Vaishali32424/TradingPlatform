@@ -1,0 +1,27 @@
+# Render Blueprint — backend API only (DB = MongoDB Atlas, frontend = Netlify)
+services:
+  - type: web
+    name: tradingplatform-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_URL
+        sync: false
+      - key: SUPERADMIN_LOGIN_ID
+        value: superadmin
+      - key: SUPERADMIN_PASSWORD
+        sync: false
+      - key: SUPERADMIN_NAME
+        value: Platform Admin
+      - key: RUN_SEED
+        value: "true"
