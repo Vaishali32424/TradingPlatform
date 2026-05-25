@@ -5,10 +5,8 @@
     "dev:api": "npm run dev --prefix backend",
     "dev:web": "npm run dev --prefix frontend",
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "start": "npm run start --prefix backend",
     "deploy": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1",
     "deploy:atlas": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Atlas"
-  },
-  "dependencies": {
-    "git": "^0.1.5"
   }
 }

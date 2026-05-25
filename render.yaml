@@ -5,9 +5,8 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && npm run build
-    startCommand: npm start
-    # Do NOT use "npm run dev" — Render needs production start on process.env.PORT
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: node dist/index.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

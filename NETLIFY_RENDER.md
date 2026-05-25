@@ -56,8 +56,10 @@ git push origin main
 | Setting | Value |
 |---------|--------|
 | **Root Directory** | `backend` |
-| **Build Command** | `npm install && npm run build` |
-| **Start Command** | `npm start` (not `npm run dev`) |
+| **Build Command** | `npm install --include=dev && npm run build` |
+| **Start Command** | `node dist/index.js` (not `npm run dev`) |
+
+See **[RENDER_SETUP.md](./RENDER_SETUP.md)** if you see “No open ports detected”.
 | **Instance type** | Web Service |
 
 6. Copy your API URL, e.g. `https://tradingplatform-api.onrender.com`
