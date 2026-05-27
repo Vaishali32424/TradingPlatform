@@ -89,9 +89,9 @@ export default function OrderHistory() {
           trades.map((t) => {
             const pl = t.profitLoss ?? computeTradePL(t);
             const plUp = pl >= 0;
-            const moved = t.movedToHistoryAt
-              ? new Date(t.movedToHistoryAt).toLocaleString()
-              : new Date(t.createdAt).toLocaleString();
+            // const moved = t.movedToHistoryAt
+            //   ? new Date(t.movedToHistoryAt).toLocaleString()
+            //   : new Date(t.createdAt).toLocaleString();
             return (
               <div key={t._id} className="px-4 py-3.5">
                 <div className="flex justify-between gap-3">
