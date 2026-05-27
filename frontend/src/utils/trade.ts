@@ -1,6 +1,7 @@
 import type { Trade, TradeCurrency } from "../types";
 
 export function formatBuySellLine(trade: {
+  side?: string;
   buyAmount?: number;
   sellAmount?: number;
   amount?: number;
@@ -9,7 +10,9 @@ export function formatBuySellLine(trade: {
   const sell = trade.sellAmount ?? trade.amount ?? 0;
   const f = (n: number) =>
     n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `Buy $${f(buy)} · Sell $${f(sell)}`;
+  return trade.side === "sell"
+    ? `Sell $${f(sell)} · Buy $${f(buy)}`
+    : `Buy $${f(buy)} · Sell $${f(sell)}`;
 }
 
 export function formatTradeAmount(amount: number, currency: TradeCurrency = "USD"): string {
@@ -23,13 +26,15 @@ export function computeTradePL(trade: Trade & { profitLoss?: number }): number {
   if (trade.profitLoss != null) return trade.profitLoss;
   const buy = trade.buyAmount ?? trade.amount ?? 0;
   const sell = trade.sellAmount ?? trade.amount ?? 0;
-  return Number((sell - buy).toFixed(2));
+  const lots = trade.lots ?? 1;
+  const multiplier = trade.plMultiplier ?? 1;
+  return Number(((sell - buy) * lots * multiplier).toFixed(3));
 }
 
 /** Live P/L from buying & selling price fields (USD). */
 export function computePLFromPrices(buy: number, sell: number): number {
   if (!Number.isFinite(buy) || !Number.isFinite(sell)) return 0;
-  return Number((sell - buy).toFixed(2));
+  return Number((sell - buy).toFixed(3));
 }
 
 export function formatTradeSummary(trade: Trade): string {
@@ -44,8 +49,13 @@ export function formatTradeDetails(trade: Trade): string[] {
   if (trade.companyName) lines.push(`Symbol: ${trade.companyName}`);
   if (trade.lots != null) lines.push(`Lots: ${trade.lots}`);
   if (trade.side) lines.push(`Side: ${trade.side}`);
-  if (trade.buyAmount != null) lines.push(`Buy: ${formatTradeAmount(trade.buyAmount, "USD")}`);
-  if (trade.sellAmount != null) lines.push(`Sell: ${formatTradeAmount(trade.sellAmount, "USD")}`);
+  if (trade.side === "sell") {
+    if (trade.sellAmount != null) lines.push(`Sell: ${formatTradeAmount(trade.sellAmount, "USD")}`);
+    if (trade.buyAmount != null) lines.push(`Buy: ${formatTradeAmount(trade.buyAmount, "USD")}`);
+  } else {
+    if (trade.buyAmount != null) lines.push(`Buy: ${formatTradeAmount(trade.buyAmount, "USD")}`);
+    if (trade.sellAmount != null) lines.push(`Sell: ${formatTradeAmount(trade.sellAmount, "USD")}`);
+  }
   if (trade.expiryDate) {
     lines.push(`Expiry: ${new Date(trade.expiryDate).toLocaleDateString()}`);
   }

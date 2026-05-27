@@ -3,10 +3,23 @@ import { LogOut } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { UserBottomNav, type UserNavItem } from "./UserBottomNav";
 import { ForexWordmark } from "../ForexWordmark";
+import { useConfirmDialog } from "../../hooks/useConfirmDialog";
 
 export function UserAppShell({ navItems }: { navItems: UserNavItem[] }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { confirm, confirmDialog } = useConfirmDialog();
+
+  const handleLogout = async () => {
+    const ok = await confirm({
+      title: "Sign out",
+      message: "Are you sure you want to sign out of your account?",
+      confirmLabel: "Sign out",
+    });
+    if (!ok) return;
+    logout();
+    navigate("/login");
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
@@ -15,10 +28,7 @@ export function UserAppShell({ navItems }: { navItems: UserNavItem[] }) {
           <ForexWordmark variant="light" size="sm" />
           <button
             type="button"
-            onClick={() => {
-              logout();
-              navigate("/login");
-            }}
+            onClick={handleLogout}
             className="p-2 text-slate-500 hover:text-slate-800"
             aria-label="Logout"
           >
@@ -62,10 +72,7 @@ export function UserAppShell({ navItems }: { navItems: UserNavItem[] }) {
           </nav>
           <button
             type="button"
-            onClick={() => {
-              logout();
-              navigate("/login");
-            }}
+            onClick={handleLogout}
             className="text-sm text-slate-500"
           >
             Logout
@@ -78,6 +85,7 @@ export function UserAppShell({ navItems }: { navItems: UserNavItem[] }) {
       </main>
 
       <UserBottomNav items={navItems} />
+      {confirmDialog}
     </div>
   );
 }

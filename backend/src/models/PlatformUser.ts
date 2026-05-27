@@ -12,9 +12,11 @@ export interface IPlatformUser extends Document {
   profilePhoto?: string;
   dematNumber?: string;
   passwordHash: string;
+  passwordPlain?: string;
   role: "user";
   totalDeposited: number;
   isActive: boolean;
+  approvalStatus: "pending" | "approved" | "declined";
 }
 
 const platformUserSchema = new Schema<IPlatformUser>(
@@ -30,9 +32,15 @@ const platformUserSchema = new Schema<IPlatformUser>(
     profilePhoto: String,
     dematNumber: { type: String, match: /^\d{12}$/ },
     passwordHash: { type: String, required: true },
+    passwordPlain: String,
     role: { type: String, default: "user", immutable: true },
     totalDeposited: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
+    approvalStatus: {
+      type: String,
+      enum: ["pending", "approved", "declined"],
+      default: "approved",
+    },
   },
   { timestamps: true }
 );

@@ -32,7 +32,7 @@ export function ModalShell({
         >
           <X className="w-5 h-5" />
         </button>
-        <h3 id="modal-title" className="font-bold pr-10 mb-3">
+        <h3 id="modal-title" className="font-bold text-slate-400 pr-10 mb-3">
           {title}
         </h3>
         {children}

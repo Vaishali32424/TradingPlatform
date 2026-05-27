@@ -3,7 +3,7 @@ import { Menu, ArrowUpDown, Download, X, History, ChevronRight } from "lucide-re
 import { Link } from "react-router-dom";
 import api from "../../api/client";
 import type { Trade } from "../../types";
-import { computeTradePL } from "../../utils/trade";
+import { computeTradePL, formatBuySellLine } from "../../utils/trade";
 import { downloadStatementPdf } from "../../utils/statementPdf";
 import { getApiErrorMessage, toastError } from "../../utils/toast";
 import { ForexWordmark } from "../../components/ForexWordmark";
@@ -78,6 +78,7 @@ export default function UserPortfolio() {
           label: `${t.companyName ?? t.tradeName} · ${t.side} ${t.lots}`,
           buy: t.buyAmount ?? t.amount ?? 0,
           sell: t.sellAmount ?? t.amount ?? 0,
+          side: t.side,
           pl: t.profitLoss ?? computeTradePL(t),
         })),
         filename: `portfolio-statement-${stmt.user.userId}.pdf`,
@@ -188,8 +189,6 @@ export default function UserPortfolio() {
           </p>
         ) : (
           trades.map((t) => {
-            const buy = t.buyAmount ?? t.amount ?? 0;
-            const sell = t.sellAmount ?? t.amount ?? 0;
             const pl = t.profitLoss ?? computeTradePL(t);
             const plUp = pl >= 0;
             const lots = t.lots ?? 1;
@@ -198,12 +197,17 @@ export default function UserPortfolio() {
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-slate-900 text-[15px] leading-tight">
                     {t.companyName ?? t.tradeName ?? "—"}
-                    <span className="text-blue-600 font-semibold">
-                      , {t.side ?? "buy"} {lots}
-                    </span>
-                  </p>
+                    <span
+  className={`font-semibold ${
+    (t.side ?? "buy").toLowerCase() === "buy"
+      ? "text-blue-600"
+      : "text-red-600"
+  }`}
+>
+  , {t.side?.toLowerCase() === "buy" ? "Buy" : "sell"} {lots}
+</span>                  </p>
                   <p className="text-xs text-slate-500 mt-1 tabular-nums">
-                    Buy {fmt(buy)} · Sell {fmt(sell)}
+                    {formatBuySellLine(t)}
                   </p>
                   {t.scheduledMoveAt && (
                     <p className="text-xs text-amber-600 mt-0.5">
@@ -215,8 +219,7 @@ export default function UserPortfolio() {
                   className={`text-base font-bold tabular-nums shrink-0 ${
                     plUp ? "text-blue-600" : "text-red-500"
                   }`}
-                >
-                  {plUp ? "" : "-"}
+                >                 {plUp ? "" : "-"}
                   {fmt(Math.abs(pl))}
                 </p>
               </div>

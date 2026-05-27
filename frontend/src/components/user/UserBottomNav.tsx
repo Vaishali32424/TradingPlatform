@@ -25,7 +25,7 @@ export function UserBottomNav({ items }: { items: UserNavItem[] }) {
               <span className="p-1.5 rounded-full transition-colors">
                 <Icon className="w-6 h-6" strokeWidth={1.75} />
               </span>
-              <span>{label}</span>
+              <span >{label}</span>
             </a>
           ) : (
             <NavLink

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { PasswordInput } from "../components/PasswordInput";
@@ -16,6 +16,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -23,12 +24,32 @@ export default function LoginPage() {
     navigate(roleHome[user.role] ?? "/login", { replace: true });
   }
 
+  useEffect(() => {
+    const savedLoginId = localStorage.getItem("rememberLoginId");
+    const savedPassword = localStorage.getItem("rememberPassword");
+    if (savedLoginId || savedPassword) {
+      setLoginId(savedLoginId ?? "");
+      setPassword(savedPassword ?? "");
+      setRemember(true);
+    }
+  }, []);
+
+  const normalizedLoginId = useMemo(() => loginId, [loginId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSubmitting(true);
     try {
-      await login(loginId.trim(), password);
+      if (remember) {
+        localStorage.setItem("rememberLoginId", normalizedLoginId);
+        localStorage.setItem("rememberPassword", password);
+      } else {
+        localStorage.removeItem("rememberLoginId");
+        localStorage.removeItem("rememberPassword");
+      }
+
+      await login(normalizedLoginId, password);
       const me = await api.get("/auth/me");
       navigate(roleHome[me.data.user.role] ?? "/login");
     } catch (err: unknown) {
@@ -43,7 +64,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-gradient-to-b from-surface to-slate-900">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 bg-gradient-to-b from-surface to-slate-900">
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-8">
           <ForexWordmark variant="dark" size="lg" />
@@ -70,6 +91,15 @@ export default function LoginPage() {
               autoComplete="current-password"
             />
           </div>
+          <label className="flex items-center gap-2 text-sm text-slate-300 select-none">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="h-4 w-4 accent-brand-500"
+            />
+            Remember my login info
+          </label>
           {error && <p className="text-red-400 text-sm">{error}</p>}
           <button type="submit" className="btn-primary w-full" disabled={submitting}>
             {submitting ? "Signing in..." : "Sign in"}

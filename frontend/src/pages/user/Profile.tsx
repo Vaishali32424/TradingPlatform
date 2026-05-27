@@ -40,6 +40,8 @@ export default function UserProfile() {
 
   useEffect(() => {
     load();
+    const id = setInterval(load, 15000);
+    return () => clearInterval(id);
   }, []);
 
   const showFundError = () => toastError("Something went wrong. Please try again later.");

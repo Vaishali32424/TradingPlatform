@@ -6,10 +6,13 @@ export function tradeProfitLoss(trade: {
   sellAmount?: number;
   amount?: number;
   lots?: number;
+  plMultiplier?: number;
 }): number {
   const buy = trade.buyAmount ?? trade.amount ?? 0;
   const sell = trade.sellAmount ?? trade.amount ?? 0;
-  return Number((sell - buy).toFixed(2));
+  const lots = trade.lots ?? 1;
+  const multiplier = trade.plMultiplier ?? 1;
+  return Number(((sell - buy) * lots * multiplier).toFixed(3));
 }
 
 export function normalizeTrade(trade: Record<string, unknown>) {
@@ -19,11 +22,13 @@ export function normalizeTrade(trade: Record<string, unknown>) {
     ...trade,
     buyAmount,
     sellAmount,
+    plMultiplier: (trade.plMultiplier as number) ?? 1,
     profitLoss: tradeProfitLoss({
       side: trade.side as string,
       buyAmount,
       sellAmount,
       lots: trade.lots as number,
+      plMultiplier: (trade.plMultiplier as number) ?? 1,
     }),
   };
   if (trade.scheduledMoveAt) {

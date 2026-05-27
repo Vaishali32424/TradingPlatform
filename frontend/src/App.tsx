@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, UserCircle, Briefcase, ArrowDownToLine, TrendingUp, Home, Heart } from "lucide-react";
+import { LayoutDashboard, Users, Building2, UserCircle, Briefcase, ArrowDownToLine, TrendingUp, Home, BarChart } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AppShell } from "./components/AppShell";
@@ -39,9 +39,9 @@ const userNav = [
   { to: "/user/home", label: "Home", icon: Home },
   {
     to: "/user/watchlist",
-    label: "Watchlist",
-    icon: Heart,
-    externalUrl: "https://www.moneycontrol.com/",
+    label: "Research",
+    icon: BarChart,
+    externalUrl: "https://in.tradingview.com/markets/currencies/",
   },
   { to: "/user/portfolio", label: "Portfolio", icon: Briefcase },
   { to: "/user/profile", label: "Profile", icon: UserCircle },

@@ -28,7 +28,7 @@ export function downloadStatementPdf(opts: {
   subtitle: string;
   accountName?: string;
   ledger: StatementLedgerRow[];
-  positions?: { label: string; pl: number; buy: number; sell: number }[];
+  positions?: { label: string; pl: number; buy: number; sell: number; side?: string }[];
   summary?: { label: string; value: string }[];
   filename: string;
 }) {
@@ -102,10 +102,12 @@ export function downloadStatementPdf(opts: {
     y += 4;
     autoTable(doc, {
       startY: y,
-      head: [["Symbol", "Buy → Sell", "P/L"]],
+      head: [["Symbol", "Entry", "P/L"]],
       body: opts.positions.map((p) => [
         p.label,
-        `${fmtMoney(p.buy)} → ${fmtMoney(p.sell)}`,
+        p.side === "sell"
+          ? `Sell ${fmtMoney(p.sell)} → Buy ${fmtMoney(p.buy)}`
+          : `Buy ${fmtMoney(p.buy)} → Sell ${fmtMoney(p.sell)}`,
         (p.pl >= 0 ? "+" : "-") + fmtMoney(Math.abs(p.pl)),
       ]),
       styles: { fontSize: 8 },

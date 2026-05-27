@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import api from "../../api/client";
 import { Sparkline } from "./Sparkline";
@@ -38,6 +38,11 @@ export function MarketCarousel({
   const [index, setIndex] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const touchStartX = useRef<number | null>(null);
+  const touchLastX = useRef<number | null>(null);
+  const pointerStartX = useRef<number | null>(null);
+  const pointerLastX = useRef<number | null>(null);
+  const wheelCooldown = useRef(false);
 
   useEffect(() => {
     const load = () =>
@@ -80,7 +85,66 @@ export function MarketCarousel({
   }
 
   return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <section
+      className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+      onPointerDown={(e) => {
+        pointerStartX.current = e.clientX;
+        pointerLastX.current = e.clientX;
+      }}
+      onPointerMove={(e) => {
+        if (pointerStartX.current == null) return;
+        pointerLastX.current = e.clientX;
+      }}
+      onPointerUp={() => {
+        const start = pointerStartX.current;
+        const end = pointerLastX.current;
+        pointerStartX.current = null;
+        pointerLastX.current = null;
+        if (start == null || end == null || items.length < 2) return;
+        const dx = end - start;
+        const threshold = 50;
+        if (dx > threshold) {
+          setIndex((i) => (i - 1 + items.length) % items.length);
+        } else if (dx < -threshold) {
+          setIndex((i) => (i + 1) % items.length);
+        }
+      }}
+      onTouchStart={(e) => {
+        touchStartX.current = e.touches[0]?.clientX ?? null;
+        touchLastX.current = touchStartX.current;
+      }}
+      onTouchMove={(e) => {
+        touchLastX.current = e.touches[0]?.clientX ?? touchLastX.current;
+      }}
+      onTouchEnd={() => {
+        const start = touchStartX.current;
+        const end = touchLastX.current;
+        touchStartX.current = null;
+        touchLastX.current = null;
+        if (start == null || end == null || items.length < 2) return;
+        const dx = end - start;
+        const threshold = 50;
+        if (dx > threshold) {
+          setIndex((i) => (i - 1 + items.length) % items.length);
+        } else if (dx < -threshold) {
+          setIndex((i) => (i + 1) % items.length);
+        }
+      }}
+      onWheel={(e) => {
+        if (items.length < 2 || wheelCooldown.current) return;
+        const dominantDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        if (Math.abs(dominantDelta) < 20) return;
+        wheelCooldown.current = true;
+        if (dominantDelta > 0) {
+          setIndex((i) => (i + 1) % items.length);
+        } else {
+          setIndex((i) => (i - 1 + items.length) % items.length);
+        }
+        window.setTimeout(() => {
+          wheelCooldown.current = false;
+        }, 250);
+      }}
+    >
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <h3 className="font-semibold text-slate-800">{title}</h3>
         <div className="flex gap-1">

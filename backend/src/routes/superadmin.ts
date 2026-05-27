@@ -185,6 +185,7 @@ router.post("/brokers", async (req: AuthRequest, res) => {
     aadharNumber: data.aadharNumber,
     panNumber: data.panNumber.toUpperCase(),
     passwordHash,
+    passwordPlain: data.password,
   });
 
   await logActivity(
@@ -226,6 +227,7 @@ router.put("/brokers/:id", async (req: AuthRequest, res) => {
       return;
     }
     broker.passwordHash = await bcrypt.hash(data.password, 10);
+    broker.passwordPlain = data.password;
   }
 
   if (data.name) broker.name = data.name;
@@ -276,10 +278,7 @@ router.get("/users", async (req, res) => {
   const filter = req.query.brokerId
     ? { brokerId: String(req.query.brokerId) }
     : {};
-  const users = await PlatformUser.find(filter)
-    .sort({ createdAt: -1 })
-    .select("-passwordHash")
-    .lean();
+  const users = await PlatformUser.find(filter).sort({ createdAt: -1 }).lean();
   res.json(users);
 });
 

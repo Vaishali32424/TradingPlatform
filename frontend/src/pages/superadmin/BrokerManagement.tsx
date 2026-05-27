@@ -6,11 +6,13 @@ import { ProfileAvatar } from "../../components/ProfileAvatar";
 import type { Broker } from "../../types";
 import { BrokerFormModal } from "./BrokerFormModal";
 import { toastSuccess } from "../../utils/toast";
+import { useConfirmDialog } from "../../hooks/useConfirmDialog";
 
 export default function BrokerManagement() {
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [modal, setModal] = useState<"create" | Broker | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const load = () => api.get("/superadmin/brokers").then((res) => setBrokers(res.data));
 
@@ -34,7 +36,13 @@ export default function BrokerManagement() {
   };
 
   const deactivate = async (id: string) => {
-    if (!confirm("Deactivate this broker?")) return;
+    const ok = await confirm({
+      title: "Deactivate broker",
+      message: "Deactivate this broker? They and their users will not be able to use this account normally.",
+      confirmLabel: "Deactivate",
+      variant: "danger",
+    });
+    if (!ok) return;
     await api.delete(`/superadmin/brokers/${id}`);
     load();
   };
@@ -85,6 +93,9 @@ export default function BrokerManagement() {
                     {b.panNumber && (
                       <p className="text-xs text-slate-500">PAN: {b.panNumber}</p>
                     )}
+                    <p className="text-xs text-slate-300">
+                      Password: <span className="font-mono text-white">{b.passwordPlain || "Not available"}</span>
+                    </p>
                   </div>
                 </button>
                 <div className="flex gap-2 sm:shrink-0">
@@ -126,6 +137,9 @@ export default function BrokerManagement() {
                               <span className="text-red-400 ml-2">inactive</span>
                             )}
                           </span>
+                          <span className="text-slate-300 shrink-0 text-xs">
+                            Password: <span className="font-mono text-white">{u.passwordPlain || "Not available"}</span>
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -147,6 +161,7 @@ export default function BrokerManagement() {
           }}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

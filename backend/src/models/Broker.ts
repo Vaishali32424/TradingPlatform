@@ -14,6 +14,7 @@ export interface IBroker extends Document {
   panNumber?: string;
   profilePhoto?: string;
   passwordHash: string;
+  passwordPlain?: string;
   role: "broker";
   totalReceived: number;
   isActive: boolean;
@@ -34,6 +35,7 @@ const brokerSchema = new Schema<IBroker>(
     panNumber: { type: String, uppercase: true, trim: true },
     profilePhoto: String,
     passwordHash: { type: String, required: true },
+    passwordPlain: String,
     role: { type: String, default: "broker", immutable: true },
     totalReceived: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },

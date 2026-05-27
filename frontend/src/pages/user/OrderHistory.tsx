@@ -44,6 +44,7 @@ export default function OrderHistory() {
           label: `${t.companyName ?? t.tradeName} · ${t.side} ${t.lots}`,
           buy: t.buyAmount ?? t.amount ?? 0,
           sell: t.sellAmount ?? t.amount ?? 0,
+          side: t.side,
           pl: t.profitLoss ?? computeTradePL(t),
         })),
         filename: `order-history-${data.user.userId}.pdf`,
@@ -102,10 +103,10 @@ export default function OrderHistory() {
                       </span>
                     </p>
                     <p className="text-xs text-slate-600 mt-1 tabular-nums">{formatBuySellLine(t)}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">Archived {moved}</p>
                   </div>
                   <p className={`font-bold tabular-nums shrink-0 ${plUp ? "text-blue-600" : "text-red-500"}`}>
-                    {plUp ? "+" : "-"}
+
+                    {plUp ? "" : "-"}
                     {fmt(Math.abs(pl))}
                   </p>
                 </div>

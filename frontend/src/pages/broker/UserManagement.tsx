@@ -25,11 +25,13 @@ import type { TradeSide } from "../../types";
 import { getApiErrorMessage, toastError, toastSuccess } from "../../utils/toast";
 import { downloadStatementPdf } from "../../utils/statementPdf";
 import { ModalShell } from "../../components/ModalShell";
+import { useConfirmDialog } from "../../hooks/useConfirmDialog";
 
 type UserTab = "trades" | "history" | "withdrawals";
 
 export default function BrokerUserManagement() {
   const [users, setUsers] = useState<PlatformUser[]>([]);
+  const [signupRequests, setSignupRequests] = useState<PlatformUser[]>([]);
   const [selected, setSelected] = useState<PlatformUser | null>(null);
   const [tab, setTab] = useState<UserTab>("trades");
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -41,6 +43,8 @@ export default function BrokerUserManagement() {
   const [moneyModal, setMoneyModal] = useState(false);
   const [balanceModal, setBalanceModal] = useState(false);
   const [balanceForm, setBalanceForm] = useState("");
+  const [balanceSubmitting, setBalanceSubmitting] = useState(false);
+  const [moneySubmitting, setMoneySubmitting] = useState(false);
   const [scheduleTradeId, setScheduleTradeId] = useState<string | null>(null);
   const [scheduleAt, setScheduleAt] = useState("");
   const [tradeForm, setTradeForm] = useState({
@@ -49,6 +53,7 @@ export default function BrokerUserManagement() {
     side: "buy" as TradeSide,
     buyAmount: "",
     sellAmount: "",
+    plMultiplier: "1",
     notes: "",
     scheduleEnabled: false,
     scheduledMoveAt: "",
@@ -59,10 +64,21 @@ export default function BrokerUserManagement() {
     status: "approved" as WithdrawalRequest["status"],
     brokerRemark: "",
   });
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const loadUsers = () => api.get("/broker/users").then((res) => setUsers(res.data));
+  const loadSignupRequests = () =>
+    api.get("/broker/signup-requests").then((res) => setSignupRequests(res.data));
   const loadWithdrawals = () =>
     api.get("/broker/withdrawals").then((res) => setWithdrawals(res.data));
+
+  const refreshUsersAndSelected = async () => {
+    const updatedUsers = await api.get("/broker/users");
+    setUsers(updatedUsers.data);
+    if (!selected) return;
+    const updatedSelected = updatedUsers.data.find((x: PlatformUser) => x._id === selected._id) ?? null;
+    setSelected(updatedSelected);
+  };
 
   const loadTrades = (user: PlatformUser) =>
     api.get(`/broker/users/${user._id}/trades`).then((res) => setTrades(res.data));
@@ -72,6 +88,7 @@ export default function BrokerUserManagement() {
 
   useEffect(() => {
     loadUsers();
+    loadSignupRequests();
     loadWithdrawals();
   }, []);
 
@@ -119,6 +136,7 @@ export default function BrokerUserManagement() {
       side: "buy",
       buyAmount: "",
       sellAmount: "",
+      plMultiplier: "1",
       notes: "",
       scheduleEnabled: false,
       scheduledMoveAt: "",
@@ -139,6 +157,7 @@ export default function BrokerUserManagement() {
       side: (t.side ?? "buy") as TradeSide,
       buyAmount: String(t.buyAmount ?? t.amount ?? ""),
       sellAmount: String(t.sellAmount ?? t.amount ?? ""),
+      plMultiplier: String(t.plMultiplier ?? 1),
       notes: t.notes ?? "",
       scheduleEnabled: false,
       scheduledMoveAt: "",
@@ -156,6 +175,7 @@ export default function BrokerUserManagement() {
         side: tradeForm.side,
         buyAmount: Number(tradeForm.buyAmount),
         sellAmount: Number(tradeForm.sellAmount),
+        plMultiplier: Number(tradeForm.plMultiplier || 1),
         currency: "USD",
         notes: tradeForm.notes.trim() || undefined,
       };
@@ -173,63 +193,105 @@ export default function BrokerUserManagement() {
       setTradeModal(false);
       resetTradeForm();
       loadTrades(selected);
+      loadHistory(selected);
+      await refreshUsersAndSelected();
     } catch (err: unknown) {
       toastError(getApiErrorMessage(err, editingTrade ? "Could not update trade" : "Could not add trade"));
     }
   };
 
   const deleteUser = async () => {
-    if (!selected || !confirm(`Deactivate user ${selected.name}? They will not be able to log in.`)) return;
+    if (!selected) return;
+    const ok = await confirm({
+      title: "Deactivate user",
+      message: `Deactivate ${selected.name}? They will not be able to log in.`,
+      confirmLabel: "Deactivate",
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/broker/users/${selected._id}`);
       toastSuccess("User deactivated");
       setSelected(null);
       loadUsers();
+      loadSignupRequests();
     } catch (err: unknown) {
       toastError(getApiErrorMessage(err, "Could not delete user"));
+    }
+  };
+
+  const reviewSignupRequest = async (userId: string, action: "approve" | "decline") => {
+    try {
+      const ok = await confirm({
+        title: action === "approve" ? "Approve signup request" : "Decline signup request",
+        message:
+          action === "approve"
+            ? "Approve this signup request?"
+            : "Decline this signup request? The user will not be able to log in.",
+        confirmLabel: action === "approve" ? "Approve" : "Decline",
+        variant: action === "approve" ? "primary" : "danger",
+      });
+      if (!ok) return;
+      const { data } = await api.put(`/broker/signup-requests/${userId}`, { action });
+      toastSuccess(data.message ?? "Updated");
+      loadUsers();
+      loadSignupRequests();
+    } catch (err: unknown) {
+      toastError(getApiErrorMessage(err, "Could not update request"));
     }
   };
 
   const saveBalance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selected) return;
-    const amount = Number(balanceForm);
+    const amount = Number.parseFloat(balanceForm);
     if (!Number.isFinite(amount) || amount < 0) {
       toastError("Enter a valid balance");
       return;
     }
+    setBalanceSubmitting(true);
     try {
       const { data } = await api.put(`/broker/users/${selected._id}/balance`, {
         totalDeposited: amount,
       });
       toastSuccess(data.message ?? "Balance updated");
       setBalanceModal(false);
-      loadUsers();
-      const updated = await api.get("/broker/users");
-      const u = updated.data.find((x: PlatformUser) => x._id === selected._id);
-      if (u) setSelected(u);
+      await refreshUsersAndSelected();
     } catch (err: unknown) {
       toastError(getApiErrorMessage(err, "Could not update balance"));
+    } finally {
+      setBalanceSubmitting(false);
     }
   };
 
   const addMoney = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selected) return;
+    const amt = Number.parseFloat(moneyForm.amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toastError("Enter a valid amount");
+      return;
+    }
+    const ok = await confirm({
+      title: "Add funds",
+      message: `Add $${amt.toLocaleString(undefined, { maximumFractionDigits: 2 })} to ${selected.name}?`,
+      confirmLabel: "Add funds",
+    });
+    if (!ok) return;
+    setMoneySubmitting(true);
     try {
       const { data } = await api.post(`/broker/users/${selected._id}/add-money`, {
-        amount: Number(moneyForm.amount),
+        amount: amt,
         note: moneyForm.note.trim() || undefined,
       });
       toastSuccess(data.message ?? "Money added");
       setMoneyModal(false);
       setMoneyForm({ amount: "", note: "" });
-      loadUsers();
-      const updated = await api.get("/broker/users");
-      const u = updated.data.find((x: PlatformUser) => x._id === selected._id);
-      if (u) setSelected(u);
+      await refreshUsersAndSelected();
     } catch (err: unknown) {
       toastError(getApiErrorMessage(err, "Could not add money"));
+    } finally {
+      setMoneySubmitting(false);
     }
   };
 
@@ -249,12 +311,19 @@ export default function BrokerUserManagement() {
   };
 
   const sendToHistory = async (tradeId: string) => {
-    if (!selected || !confirm("Move this trade to order history? It stays in the user's balance.")) return;
+    if (!selected) return;
+    const ok = await confirm({
+      title: "Move to history",
+      message: "Move this trade to order history? It stays in the user's balance.",
+      confirmLabel: "Move",
+    });
+    if (!ok) return;
     try {
       await api.post(`/broker/trades/${tradeId}/to-order-history`);
       toastSuccess("Sent to order history");
       loadTrades(selected);
       loadHistory(selected);
+      await refreshUsersAndSelected();
     } catch (err: unknown) {
       toastError(getApiErrorMessage(err, "Could not archive trade"));
     }
@@ -288,13 +357,41 @@ export default function BrokerUserManagement() {
   };
 
   const deleteTrade = async (id: string) => {
-    if (!confirm("Delete this trade permanently?")) return;
+    const ok = await confirm({
+      title: "Delete trade",
+      message: "Delete this trade permanently?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/broker/trades/${id}`);
       toastSuccess("Trade deleted");
-      if (selected) loadTrades(selected);
+      if (selected) {
+        loadTrades(selected);
+        await refreshUsersAndSelected();
+      }
     } catch (err: unknown) {
       toastError(getApiErrorMessage(err, "Could not delete trade"));
+    }
+  };
+
+  const deleteHistoryTrade = async (id: string) => {
+    if (!selected) return;
+    const ok = await confirm({
+      title: "Delete history entry",
+      message: "Delete this order history entry permanently?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/broker/trades/${id}`);
+      toastSuccess("History entry deleted");
+      loadHistory(selected);
+      await refreshUsersAndSelected();
+    } catch (err: unknown) {
+      toastError(getApiErrorMessage(err, "Could not delete history entry"));
     }
   };
 
@@ -311,6 +408,7 @@ export default function BrokerUserManagement() {
           label: `${t.companyName ?? t.tradeName} · ${t.side} ${t.lots}`,
           buy: t.buyAmount ?? t.amount ?? 0,
           sell: t.sellAmount ?? t.amount ?? 0,
+          side: t.side,
           pl: t.profitLoss ?? computeTradePL(t),
         })),
         filename: `order-history-${data.user.userId}.pdf`,
@@ -332,6 +430,11 @@ export default function BrokerUserManagement() {
     Number(tradeForm.buyAmount),
     Number(tradeForm.sellAmount)
   );
+  const previewLots = Number(tradeForm.lots || 1);
+  const previewMultiplier = Number(tradeForm.plMultiplier || 1);
+  const oneLotValue = Number.isFinite(previewPL) ? previewPL : 0;
+  const allLotsValue = Number.isFinite(previewLots) ? Number((oneLotValue * previewLots).toFixed(3)) : 0;
+  const multipliedPL = Number((allLotsValue * (Number.isFinite(previewMultiplier) ? previewMultiplier : 1)).toFixed(3));
 
   const tabs: { id: UserTab; label: string }[] = [
     { id: "trades", label: `Trades (${trades.length})` },
@@ -348,6 +451,46 @@ export default function BrokerUserManagement() {
         </button>
       </div>
 
+      {signupRequests.length > 0 && (
+        <div className="card border-amber-500/30 bg-amber-500/5 space-y-2">
+          <p className="text-sm text-amber-300 font-semibold">
+            {signupRequests.length} signup request(s) waiting for approval
+          </p>
+          <ul className="space-y-2">
+            {signupRequests.slice(0, 5).map((u) => (
+              <li
+                key={u._id}
+                className="flex items-center justify-between gap-2 text-sm border border-slate-700/40 rounded-lg p-2.5 bg-surface-card"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{u.name}</p>
+                  <p className="text-xs text-slate-400 truncate">{u.userId}</p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    type="button"
+                    className="btn-primary text-xs px-2.5 py-1.5"
+                    onClick={() => reviewSignupRequest(u._id, "approve")}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost text-xs px-2.5 py-1.5 text-red-300"
+                    onClick={() => reviewSignupRequest(u._id, "decline")}
+                  >
+                    Decline
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {signupRequests.length > 5 && (
+            <p className="text-xs text-slate-400">Showing newest 5 requests.</p>
+          )}
+        </div>
+      )}
+
       {pendingAll.length > 0 && (
         <p className="text-xs text-amber-400 bg-amber-500/10 rounded-lg px-3 py-2">
           {pendingAll.length} pending withdrawal(s)
@@ -358,6 +501,7 @@ export default function BrokerUserManagement() {
         <div className="space-y-1 max-h-[70vh] overflow-y-auto pr-1">
           {users.map((u) => {
             const hasPending = usersWithPendingWithdrawal.has(u.userId);
+            const displayBalance = u.walletBalance ?? u.totalDeposited;
             return (
               <button
                 key={u._id}
@@ -384,7 +528,7 @@ export default function BrokerUserManagement() {
                   <PersonRow name={u.name} id={u.userId} photoUrl={u.profilePhoto} size="sm" />
                 </div>
                 <p className="text-xs text-brand-400 mt-1 tabular-nums">
-                  ${u.totalDeposited.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  ${displayBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
                 </p>
               </button>
             );
@@ -397,7 +541,10 @@ export default function BrokerUserManagement() {
               <div className="min-w-0">
                 <PersonRow name={selected.name} id={selected.userId} photoUrl={selected.profilePhoto} />
                 <p className="text-sm text-brand-400 mt-1 tabular-nums">
-                  Balance ${selected.totalDeposited.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  Balance ${(selected.walletBalance ?? selected.totalDeposited).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Password: <span className="font-mono text-slate-200">{selected.passwordPlain || "Not available"}</span>
                 </p>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -457,6 +604,9 @@ export default function BrokerUserManagement() {
                       <p className="text-xs text-slate-400 mt-0.5 tabular-nums">{formatBuySellLine(t)}</p>
                       <p className="text-xs text-brand-400 mt-0.5">
                         P/L {formatTradeAmount(computeTradePL(t), "USD")}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Multiply P/L by {t.plMultiplier ?? 1}
                       </p>
                       {t.scheduledMoveAt && (
                         <p className="text-xs text-amber-400 flex items-center gap-1 mt-0.5">
@@ -538,6 +688,7 @@ export default function BrokerUserManagement() {
                       <div className="min-w-0">
                         <TradeCard trade={t} compact />
                         <p className="text-xs text-slate-400 mt-0.5 tabular-nums">{formatBuySellLine(t)}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Multiply P/L by {t.plMultiplier ?? 1}</p>
                         <p className="text-xs text-slate-500 mt-0.5">
                           Archived{" "}
                           {t.movedToHistoryAt
@@ -545,9 +696,19 @@ export default function BrokerUserManagement() {
                             : "—"}
                         </p>
                       </div>
-                      <span className="text-brand-400 text-xs shrink-0">
-                        {formatTradeAmount(computeTradePL(t), t.currency ?? "USD")}
-                      </span>
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <span className="text-brand-400 text-xs">
+                          {formatTradeAmount(computeTradePL(t), t.currency ?? "USD")}
+                        </span>
+                        <button
+                          type="button"
+                          title="Delete history trade"
+                          className="p-1.5 rounded bg-slate-700/50 text-red-400 hover:bg-slate-600"
+                          onClick={() => deleteHistoryTrade(t._id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </li>
                   ))}
                   {historyTrades.length === 0 && (
@@ -612,13 +773,15 @@ export default function BrokerUserManagement() {
           wide
         >
           <form onSubmit={saveTrade} className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
-            <input
-              className="input-field"
-              placeholder="Symbol (e.g. XAUUSDm)"
-              required
-              value={tradeForm.companyName}
-              onChange={(e) => setTradeForm({ ...tradeForm, companyName: e.target.value })}
-            />
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Symbol</label>
+              <input
+                className="input-field"
+                required
+                value={tradeForm.companyName}
+                onChange={(e) => setTradeForm({ ...tradeForm, companyName: e.target.value })}
+              />
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs text-slate-400 mb-1">Lots</label>
@@ -633,7 +796,7 @@ export default function BrokerUserManagement() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Side</label>
+                <label className="block text-xs text-slate-400 mb-1">Activity</label>
                 <select
                   className="input-field"
                   value={tradeForm.side}
@@ -645,42 +808,89 @@ export default function BrokerUserManagement() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Buying price (USD)</label>
-                <input
-                  className="input-field"
-                  type="number"
-                  min="0"
-                  step="any"
-                  required
-                  value={tradeForm.buyAmount}
-                  onChange={(e) => setTradeForm({ ...tradeForm, buyAmount: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Selling price (USD)</label>
-                <input
-                  className="input-field"
-                  type="number"
-                  min="0"
-                  step="any"
-                  required
-                  value={tradeForm.sellAmount}
-                  onChange={(e) => setTradeForm({ ...tradeForm, sellAmount: e.target.value })}
-                />
-              </div>
+              {tradeForm.side === "sell" ? (
+                <>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Selling price (USD)</label>
+                    <input
+                      className="input-field"
+                      type="number"
+                      min="0"
+                      step="any"
+                      required
+                      value={tradeForm.sellAmount}
+                      onChange={(e) => setTradeForm({ ...tradeForm, sellAmount: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Buying price (USD)</label>
+                    <input
+                      className="input-field"
+                      type="number"
+                      min="0"
+                      step="any"
+                      required
+                      value={tradeForm.buyAmount}
+                      onChange={(e) => setTradeForm({ ...tradeForm, buyAmount: e.target.value })}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Buying price (USD)</label>
+                    <input
+                      className="input-field"
+                      type="number"
+                      min="0"
+                      step="any"
+                      required
+                      value={tradeForm.buyAmount}
+                      onChange={(e) => setTradeForm({ ...tradeForm, buyAmount: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Selling price (USD)</label>
+                    <input
+                      className="input-field"
+                      type="number"
+                      min="0"
+                      step="any"
+                      required
+                      value={tradeForm.sellAmount}
+                      onChange={(e) => setTradeForm({ ...tradeForm, sellAmount: e.target.value })}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Multiply P/L by</label>
+              <input
+                className="input-field"
+                type="number"
+                min="0"
+                step="any"
+                required
+                value={tradeForm.plMultiplier}
+                onChange={(e) => setTradeForm({ ...tradeForm, plMultiplier: e.target.value })}
+              />
             </div>
             {tradeForm.buyAmount && tradeForm.sellAmount && (
-              <p
-                className={`text-sm font-semibold tabular-nums ${
-                  previewPL >= 0 ? "text-emerald-400" : "text-red-400"
-                }`}
-              >
-                {previewPL >= 0 ? "Profit" : "Loss"}: {formatTradeAmount(Math.abs(previewPL), "USD")}
-                <span className="text-slate-500 font-normal text-xs ml-1">
-                  (sell − buy)
-                </span>
-              </p>
+              <div className="space-y-1 text-xs tabular-nums">
+                <p className="text-slate-300">
+                  One lot value: {formatTradeAmount(oneLotValue, "USD")}
+                </p>
+                <p className="text-slate-300">
+                  All lots value: {formatTradeAmount(oneLotValue, "USD")} × {previewLots || 0} = {formatTradeAmount(allLotsValue, "USD")}
+                </p>
+                <p className="text-slate-300">
+                  Standard P/L (original): {formatTradeAmount(allLotsValue, "USD")}
+                </p>
+                <p className="text-brand-300">
+                  Multiplied by {previewMultiplier || 0}: {formatTradeAmount(allLotsValue, "USD")} × {previewMultiplier || 0} = {formatTradeAmount(multipliedPL, "USD")}
+                </p>
+              </div>
             )}
             {!editingTrade && (
               <>
@@ -722,17 +932,23 @@ export default function BrokerUserManagement() {
         <ModalShell title={`Set balance — ${selected.name}`} onClose={() => setBalanceModal(false)}>
           <form onSubmit={saveBalance} className="space-y-3">
             <p className="text-xs text-slate-400">Set the user&apos;s wallet balance directly (USD).</p>
-            <input
-              className="input-field"
-              placeholder="Balance (USD)"
-              type="number"
-              min="0"
-              step="any"
-              required
-              value={balanceForm}
-              onChange={(e) => setBalanceForm(e.target.value)}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Balance (USD)</label>
+              <input
+                className="input-field"
+                type="number"
+                min="0"
+                step="any"
+                required
+                disabled={balanceSubmitting}
+                value={balanceForm}
+                onChange={(e) => setBalanceForm(e.target.value)}
+              />
+            </div>
+            <ModalActions
+              onCancel={() => setBalanceModal(false)}
+              submitLabel={balanceSubmitting ? "Updating..." : "Update balance"}
             />
-            <ModalActions onCancel={() => setBalanceModal(false)} submitLabel="Update balance" />
           </form>
         </ModalShell>
       )}
@@ -740,23 +956,33 @@ export default function BrokerUserManagement() {
       {moneyModal && selected && (
         <ModalShell title={`Add funds — ${selected.name}`} onClose={() => setMoneyModal(false)}>
           <form onSubmit={addMoney} className="space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Amount (USD)</label>
             <input
               className="input-field"
-              placeholder="Amount (USD)"
               type="number"
               min="0.01"
               step="any"
               required
+              disabled={moneySubmitting}
               value={moneyForm.amount}
               onChange={(e) => setMoneyForm({ ...moneyForm, amount: e.target.value })}
             />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Note (optional)</label>
             <input
               className="input-field"
-              placeholder="Note (optional)"
+              disabled={moneySubmitting}
               value={moneyForm.note}
               onChange={(e) => setMoneyForm({ ...moneyForm, note: e.target.value })}
             />
-            <ModalActions onCancel={() => setMoneyModal(false)} />
+            </div>
+            <ModalActions
+              onCancel={() => setMoneyModal(false)}
+              submitLabel={moneySubmitting ? "Adding..." : "Save"}
+              disabled={moneySubmitting}
+            />
           </form>
         </ModalShell>
       )}
@@ -798,7 +1024,7 @@ export default function BrokerUserManagement() {
             </select>
             <textarea
               className="input-field min-h-[80px]"
-              placeholder="Remark"
+              aria-label="Broker remark"
               value={reviewForm.brokerRemark}
               onChange={(e) => setReviewForm({ ...reviewForm, brokerRemark: e.target.value })}
             />
@@ -806,6 +1032,7 @@ export default function BrokerUserManagement() {
           </form>
         </ModalShell>
       )}
+      {confirmDialog}
     </div>
   );
 }
@@ -813,16 +1040,18 @@ export default function BrokerUserManagement() {
 function ModalActions({
   onCancel,
   submitLabel = "Save",
+  disabled,
 }: {
   onCancel: () => void;
   submitLabel?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex gap-2">
-      <button type="button" className="btn-ghost flex-1" onClick={onCancel}>
+      <button type="button" className="btn-ghost flex-1" onClick={onCancel} disabled={disabled}>
         Cancel
       </button>
-      <button type="submit" className="btn-primary flex-1">
+      <button type="submit" className="btn-primary flex-1" disabled={disabled}>
         {submitLabel}
       </button>
     </div>
@@ -854,50 +1083,75 @@ function UserFormModal({
         onSubmit={(e) => onSave(e, { ...form, confirmPassword: form.password }, user?._id)}
         className="space-y-3 max-h-[70vh] overflow-y-auto pr-1"
       >
-        <input
-          className="input-field"
-          placeholder="Name"
-          required
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-        />
-        <input
-          className="input-field"
-          placeholder="Phone"
-          value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
-        />
-        <input
-          className="input-field"
-          placeholder="Email"
-          type="email"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-        />
-        <input
-          className="input-field"
-          placeholder="Aadhar (12 digits)"
-          maxLength={12}
-          required={!user}
-          value={form.aadharNumber}
-          onChange={(e) =>
-            setForm({ ...form, aadharNumber: e.target.value.replace(/\D/g, "") })
-          }
-        />
-        <input
-          className="input-field"
-          placeholder="PAN"
-          maxLength={10}
-          required={!user}
-          value={form.panNumber}
-          onChange={(e) => setForm({ ...form, panNumber: e.target.value.toUpperCase() })}
-        />
-        <PasswordInput
-          placeholder={user ? "New password (optional)" : "Password"}
-          required={!user}
-          value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
-        />
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Name</label>
+          <input
+            className="input-field"
+            required
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Phone</label>
+          <input
+            className="input-field"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Email</label>
+          <input
+            className="input-field"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Aadhar (12 digits)</label>
+          <input
+            className="input-field"
+            maxLength={12}
+            required={!user}
+            value={form.aadharNumber}
+            onChange={(e) =>
+              setForm({ ...form, aadharNumber: e.target.value.replace(/\D/g, "") })
+            }
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">PAN</label>
+          <input
+            className="input-field"
+            maxLength={10}
+            required={!user}
+            value={form.panNumber}
+            onChange={(e) => setForm({ ...form, panNumber: e.target.value.toUpperCase() })}
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Demat (12 digits)</label>
+          <input
+            className="input-field"
+            inputMode="numeric"
+            maxLength={12}
+            required={!user}
+            value={form.dematNumber}
+            onChange={(e) =>
+              setForm({ ...form, dematNumber: e.target.value.replace(/\D/g, "").slice(0, 12) })
+            }
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">{user ? "New password (optional)" : "Password"}</label>
+          <PasswordInput
+            required={!user}
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+          />
+        </div>
         <ModalActions onCancel={onClose} />
       </form>
     </ModalShell>

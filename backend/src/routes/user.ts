@@ -72,10 +72,30 @@ router.post("/signup", async (req, res) => {
     aadharNumber: data.aadharNumber,
     panNumber: data.panNumber.toUpperCase(),
     passwordHash: await bcrypt.hash(data.password, 10),
+    passwordPlain: data.password,
+    isActive: false,
+    approvalStatus: "pending",
   });
 
+  // Broker approval flow: user cannot log in until approved.
+  // We log activity for broker visibility.
+  const { logActivity } = await import("../utils/activity.js");
+  await logActivity(
+    "user",
+    user.userId,
+    "signup_request_sent",
+    `Signup request sent to broker ${broker.brokerId}`,
+    broker.brokerId,
+    {
+      brokerId: broker.brokerId,
+      brokerName: broker.name,
+      userId: user.userId,
+      userName: user.name,
+    }
+  );
+
   res.status(201).json({
-    message: "Account created. Login with your User ID or email and password.",
+    message: "Account created. Waiting for broker approval.",
     userId: user.userId,
   });
 });
@@ -195,7 +215,8 @@ router.get("/portfolio", async (req: AuthRequest, res) => {
   }
   const allTrades = await allUserTrades(req.user!.loginId);
   const trades = allTrades.filter((t) => !t.inOrderHistory);
-  const totalPL = allTrades.reduce((sum, t) => sum + Number(t.profitLoss ?? 0), 0);
+  // Total Trade should reflect open positions only (exclude order history).
+  const totalPL = trades.reduce((sum, t) => sum + Number(t.profitLoss ?? 0), 0);
   const balance = user.totalDeposited;
   const margin = trades
     .filter((t) => t.status === "active")
@@ -212,7 +233,7 @@ router.get("/portfolio", async (req: AuthRequest, res) => {
       margin: Number(margin.toFixed(2)),
       freeMargin: Number(freeMargin.toFixed(2)),
       marginLevel: Number(marginLevel.toFixed(2)),
-      totalPL: Number(totalPL.toFixed(2)),
+      totalPL: Number(totalPL.toFixed(3)),
       currency: "USD",
     },
   });
@@ -236,7 +257,7 @@ router.get("/portfolio/statement", async (req: AuthRequest, res) => {
     allUserTrades(user.userId),
   ]);
   const portfolioTrades = allTrades.filter((t) => !t.inOrderHistory);
-  const totalPL = allTrades.reduce((sum, t) => sum + Number(t.profitLoss ?? 0), 0);
+  const totalPL = portfolioTrades.reduce((sum, t) => sum + Number(t.profitLoss ?? 0), 0);
   const ledger = buildStatementLedger({
     deposits: credits.map((c) => ({
       amount: c.amount,
@@ -258,7 +279,7 @@ router.get("/portfolio/statement", async (req: AuthRequest, res) => {
     summary: {
       balance: user.totalDeposited,
       equity: Number((user.totalDeposited + totalPL).toFixed(2)),
-      totalPL: Number(totalPL.toFixed(2)),
+      totalPL: Number(totalPL.toFixed(3)),
       currency: "USD",
     },
     ledger,
@@ -318,8 +339,20 @@ router.get("/wallet", async (req: AuthRequest, res) => {
     WithdrawalRequest.find({ userId: user.userId }).sort({ createdAt: -1 }).lean(),
   ]);
 
+  const trades = await allUserTrades(user.userId);
+  const openPL = trades
+    .filter((t) => !t.inOrderHistory)
+    .reduce((sum, t) => sum + Number(t.profitLoss ?? 0), 0);
+  // Realized P/L is already applied to `totalDeposited` when broker moves trades to history.
+  const balance = Number((user.totalDeposited + openPL).toFixed(3));
+
   res.json({
-    balance: user.totalDeposited,
+    balance,
+    breakdown: {
+      baseBalance: user.totalDeposited,
+      openPL: Number(openPL.toFixed(3)),
+      realizedPL: 0,
+    },
     credits,
     withdrawals,
   });
@@ -350,9 +383,15 @@ router.post("/withdrawals", async (req: AuthRequest, res) => {
     return;
   }
 
-  if (parsed.data.amount > user.totalDeposited) {
+  const openTrades = await allUserTrades(user.userId);
+  const openPL = openTrades
+    .filter((t) => !t.inOrderHistory)
+    .reduce((sum, t) => sum + Number(t.profitLoss ?? 0), 0);
+  const available = Number((user.totalDeposited + openPL).toFixed(3));
+
+  if (parsed.data.amount > available) {
     res.status(400).json({
-      message: `Insufficient balance. Available: $${user.totalDeposited.toLocaleString()}`,
+      message: `Insufficient balance. Available: $${available.toLocaleString()}`,
     });
     return;
   }

@@ -4,12 +4,20 @@ import { useAuth } from "../context/AuthContext";
 import { formatPersonLabel } from "../utils/displayName";
 import { BottomNav, type NavItem } from "./BottomNav";
 import { ForexWordmark } from "./ForexWordmark";
+import { useConfirmDialog } from "../hooks/useConfirmDialog";
 
 export function AppShell({ navItems }: { navItems: NavItem[] }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const ok = await confirm({
+      title: "Sign out",
+      message: "Are you sure you want to sign out of your account?",
+      confirmLabel: "Sign out",
+    });
+    if (!ok) return;
     logout();
     navigate("/login");
   };
@@ -40,6 +48,7 @@ export function AppShell({ navItems }: { navItems: NavItem[] }) {
       </main>
 
       <BottomNav items={navItems} />
+      {confirmDialog}
     </div>
   );
 }

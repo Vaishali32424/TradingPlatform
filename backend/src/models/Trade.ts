@@ -17,6 +17,7 @@ export interface ITrade extends Document {
   side: TradeSide;
   buyAmount: number;
   sellAmount: number;
+  plMultiplier?: number;
   amount?: number;
   currency: TradeCurrency;
   tradeName?: string;
@@ -41,6 +42,7 @@ const tradeSchema = new Schema<ITrade>(
     side: { type: String, enum: ["buy", "sell"], required: true },
     buyAmount: { type: Number, default: 0 },
     sellAmount: { type: Number, default: 0 },
+    plMultiplier: { type: Number, default: 1, min: 0 },
     amount: Number,
     currency: { type: String, enum: ["INR", "USD"], default: "USD" },
     tradeName: String,

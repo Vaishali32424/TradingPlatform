@@ -26,6 +26,7 @@ export interface Broker {
   userCount?: number;
   users?: PlatformUser[];
   profilePhoto?: string;
+  passwordPlain?: string;
 }
 
 export interface PlatformUser {
@@ -41,8 +42,13 @@ export interface PlatformUser {
   isActive: boolean;
   profilePhoto?: string;
   dematNumber?: string;
+  approvalStatus?: "pending" | "approved" | "declined";
+  openPL?: number;
+  realizedPL?: number;
+  walletBalance?: number;
   aadharMasked?: string;
   panMasked?: string;
+  passwordPlain?: string;
 }
 
 export type OptionType = "call" | "put";
@@ -60,6 +66,7 @@ export interface Trade {
   side?: TradeSide;
   buyAmount?: number;
   sellAmount?: number;
+  plMultiplier?: number;
   amount: number;
   profitLoss?: number;
   currency?: TradeCurrency;

@@ -12,7 +12,7 @@ import { Transaction } from "../models/Transaction.js";
 import { WithdrawalRequest } from "../models/WithdrawalRequest.js";
 import { generateUserId } from "../utils/ids.js";
 import { logActivity } from "../utils/activity.js";
-import { normalizeTrade } from "../utils/tradeCalc.js";
+import { normalizeTrade, tradeProfitLoss } from "../utils/tradeCalc.js";
 import { buildStatementLedger } from "../utils/statement.js";
 
 const router = Router();
@@ -93,7 +93,102 @@ router.get("/users", async (req: AuthRequest, res) => {
     .select("-passwordHash")
     .sort({ createdAt: -1 })
     .lean();
-  res.json(users);
+
+  const userIds = users.map((u) => u.userId);
+  const trades = userIds.length
+    ? await Trade.find({ brokerId: req.user!.brokerId, userId: { $in: userIds } }).lean()
+    : [];
+  const plByUser: Record<string, { open: number }> = {};
+  for (const t of trades) {
+    const id = (t as { userId?: string }).userId;
+    if (!id) continue;
+    const pl = tradeProfitLoss({
+      side: t.side,
+      buyAmount: t.buyAmount,
+      sellAmount: t.sellAmount,
+      amount: t.amount,
+      lots: t.lots,
+    });
+    if (!plByUser[id]) plByUser[id] = { open: 0 };
+    if (!(t as { inOrderHistory?: boolean }).inOrderHistory) plByUser[id].open += pl;
+  }
+
+  const enriched = users.map((u) => {
+    const pl = plByUser[u.userId] ?? { open: 0 };
+    const walletBalance = Number((u.totalDeposited + pl.open).toFixed(3));
+    return {
+      ...u,
+      openPL: Number(pl.open.toFixed(3)),
+      realizedPL: 0,
+      walletBalance,
+    };
+  });
+
+  res.json(enriched);
+});
+
+router.get("/signup-requests", async (req: AuthRequest, res) => {
+  const requests = await PlatformUser.find({
+    brokerId: req.user!.brokerId,
+    approvalStatus: "pending",
+  })
+    .select("-passwordHash")
+    .sort({ createdAt: -1 })
+    .lean();
+  res.json(requests);
+});
+
+const signupRequestReviewSchema = z.object({
+  action: z.enum(["approve", "decline"]),
+});
+
+router.put("/signup-requests/:id", async (req: AuthRequest, res) => {
+  const parsed = signupRequestReviewSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: "Invalid action" });
+    return;
+  }
+
+  const user = await PlatformUser.findOne({
+    _id: req.params.id,
+    brokerId: req.user!.brokerId,
+    approvalStatus: "pending",
+  });
+  if (!user) {
+    res.status(404).json({ message: "Signup request not found" });
+    return;
+  }
+
+  const action = parsed.data.action;
+  if (action === "approve") {
+    user.approvalStatus = "approved";
+    user.isActive = true;
+  } else {
+    user.approvalStatus = "declined";
+    user.isActive = false;
+  }
+  await user.save();
+
+  const broker = await getBroker(req);
+  const actorBrokerId = req.user?.brokerId ?? req.user?.loginId ?? "unknown";
+  await logActivity(
+    "broker",
+    actorBrokerId,
+    action === "approve" ? "signup_approved" : "signup_declined",
+    `${user.name} (${user.userId})`,
+    actorBrokerId,
+    {
+      brokerId: actorBrokerId,
+      brokerName: broker?.name,
+      userId: user.userId,
+      userName: user.name,
+    }
+  );
+
+  res.json({
+    message: action === "approve" ? "User approved" : "User declined",
+    user: { ...user.toObject(), passwordHash: undefined },
+  });
 });
 
 const panField = z
@@ -171,6 +266,7 @@ router.post("/users", async (req: AuthRequest, res) => {
     panNumber: data.panNumber ? data.panNumber.toUpperCase() : undefined,
     dematNumber: data.dematNumber || undefined,
     passwordHash: await bcrypt.hash(data.password, 10),
+    passwordPlain: data.password,
   });
 
   await logActivity(
@@ -215,6 +311,7 @@ router.put("/users/:id", async (req: AuthRequest, res) => {
       return;
     }
     user.passwordHash = await bcrypt.hash(data.password, 10);
+    user.passwordPlain = data.password;
   }
   if (data.name) user.name = data.name;
   if (data.phone !== undefined) user.phone = data.phone;
@@ -490,6 +587,7 @@ const tradeSchema = z.object({
   side: z.enum(["buy", "sell"]),
   buyAmount: z.number().positive(),
   sellAmount: z.number().positive(),
+  plMultiplier: z.number().min(0).optional(),
   currency: z.enum(["INR", "USD"]).optional(),
   expiryDate: z.string().optional(),
   strikePrice: z.number().positive().optional(),
@@ -549,6 +647,7 @@ router.post("/trades", async (req: AuthRequest, res) => {
     side: data.side,
     buyAmount: data.buyAmount,
     sellAmount: data.sellAmount,
+    plMultiplier: data.plMultiplier ?? 1,
     amount: data.sellAmount,
     currency: data.currency ?? "USD",
     tradeName: tradeLabel,
@@ -590,9 +689,14 @@ router.put("/trades/:id", async (req: AuthRequest, res) => {
     return;
   }
 
+  const updateData = {
+    ...parsed.data,
+    ...(parsed.data.plMultiplier !== undefined ? { plMultiplier: parsed.data.plMultiplier } : {}),
+  };
+
   const trade = await Trade.findOneAndUpdate(
     { _id: req.params.id, brokerId: req.user!.brokerId },
-    parsed.data,
+    updateData,
     { new: true }
   );
   if (!trade) {
@@ -627,10 +731,26 @@ router.post("/trades/:id/to-order-history", async (req: AuthRequest, res) => {
     res.status(400).json({ message: "Trade is already in order history" });
     return;
   }
+  const user = await PlatformUser.findById(trade.userRef);
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+
+  // Realize this trade's P/L into wallet when archiving.
+  const realizedPL = tradeProfitLoss({
+    side: trade.side,
+    buyAmount: trade.buyAmount,
+    sellAmount: trade.sellAmount,
+    amount: trade.amount,
+    lots: trade.lots,
+  });
+  user.totalDeposited = Number((user.totalDeposited + realizedPL).toFixed(3));
+
   trade.inOrderHistory = true;
   trade.movedToHistoryAt = new Date();
   trade.scheduledMoveAt = undefined;
-  await trade.save();
+  await Promise.all([trade.save(), user.save()]);
   res.json(normalizeTrade(trade.toObject() as unknown as Record<string, unknown>));
 });
 

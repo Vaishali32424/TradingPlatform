@@ -27,8 +27,9 @@ router.post("/login", async (req, res) => {
   const { loginId, password } = parsed.data;
   const id = loginId.trim();
   const emailLower = isEmail(id) ? id.toLowerCase() : null;
+  const idRegex = new RegExp(`^${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
 
-  const superAdmin = await SuperAdmin.findOne({ loginId: id });
+  const superAdmin = await SuperAdmin.findOne({ loginId: idRegex });
   if (superAdmin && (await bcrypt.compare(password, superAdmin.passwordHash))) {
     const token = signToken({
       id: superAdmin._id.toString(),
@@ -50,7 +51,7 @@ router.post("/login", async (req, res) => {
 
   const broker = emailLower
     ? await Broker.findOne({ email: emailLower, isActive: true })
-    : await Broker.findOne({ brokerId: id, isActive: true });
+    : await Broker.findOne({ brokerId: idRegex, isActive: true });
   if (broker && (await bcrypt.compare(password, broker.passwordHash))) {
     const token = signToken({
       id: broker._id.toString(),
@@ -73,8 +74,8 @@ router.post("/login", async (req, res) => {
   }
 
   const user = emailLower
-    ? await PlatformUser.findOne({ email: emailLower, isActive: true })
-    : await PlatformUser.findOne({ userId: id, isActive: true });
+    ? await PlatformUser.findOne({ email: emailLower, isActive: true, approvalStatus: "approved" })
+    : await PlatformUser.findOne({ userId: idRegex, isActive: true, approvalStatus: "approved" });
   if (user && (await bcrypt.compare(password, user.passwordHash))) {
     const token = signToken({
       id: user._id.toString(),

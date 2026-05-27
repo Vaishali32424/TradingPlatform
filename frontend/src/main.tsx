@@ -4,13 +4,16 @@ import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
+import { CopyGuard } from "./components/CopyGuard";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <App />
+        <CopyGuard>
+          <App />
+        </CopyGuard>
         <Toaster
           position="top-center"
           toastOptions={{
